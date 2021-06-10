@@ -1,0 +1,380 @@
+/****************************************************************************/
+/*                      Karol Marcela Gutiérrez Prieto                      */
+/*                                 A01566250                                */
+/*                             Control Avanzado                             */
+/* Sistema de identificación y control de temperatura de un horno eléctrico */
+/*                                10/06/2021                                */
+/****************************************************************************/
+
+#include <cvirte.h>		
+#include <userint.h>
+#include "toolbox.h"
+#include "KarolGutierrezP5.h"
+
+static int panelHandle;
+float f[1];
+double y[3], x[3], b[16], u[15], miu=0.000005, error, Referencia, r[17], t[17], s[17], Ref[17], m[3], r0, r1,s13,s12,s11,s10,s9,s8,s7,s6,s5,s4,s3,s2,s1,s0, graf[3];
+int contador_error, controlador_avanzado, boton;
+
+int main (int argc, char *argv[])
+{
+	if (InitCVIRTE (0, argv, 0) == 0)
+		return -1;	/* out of memory */
+	if ((panelHandle = LoadPanel (0, "KarolGutierrezP5.uir", PANEL)) < 0)
+		return -1;
+	DisplayPanel (panelHandle);
+	RunUserInterface ();
+	DiscardPanel (panelHandle);
+	return 0;
+}
+
+int CVICALLBACK ftimer (int panel, int control, int event,
+						void *callbackData, int eventData1, int eventData2)
+{
+	double xin, yout[2];
+	
+	switch (event)
+	{
+		case EVENT_TIMER_TICK:
+			
+			//GetCtrlVal(panelHandle, PANEL_NUMERICSLIDE, &xin);
+			
+			if(controlador_avanzado==0&boton==0){
+				GetCtrlVal(panelHandle, PANEL_NUMERICSLIDE, &xin);
+				x[0]=xin;
+				y[0] = 1.0579 * x[1] + .7788 * y[1];
+			}
+			
+			if(controlador_avanzado==1){
+				xin=m[0];
+				x[0]=xin;
+				y[0] = 1.0579 * x[1] + .7788 * y[1];
+			}
+			
+			if(boton==1){
+				xin=u[0];
+				x[0]=xin;
+				y[0] = 1.0579 * x[1] + .7788 * y[1];
+			}
+			
+			GetCtrlVal(panelHandle,PANEL_TOGGLEBUTTON,&boton);
+			
+			//x[0] = xin;
+			//x[0] = u[0];
+			//y[0] = 1.0579 * x[1] + .7788 * y[1];
+			yout[0] = x[0];
+			yout[1] = y[0];
+			 
+			PlotStripChart (panelHandle, PANEL_STRIPCHART, yout, 2, 0, 0, VAL_DOUBLE);
+			SetCtrlVal(panelHandle, PANEL_NUMERICTHERM, y[0]);
+			
+			y[1] = y[0];
+			x[1] = x[0];
+			
+			if(controlador_avanzado==1){
+				for(int i=14; i>0; i--)
+				{
+					u[i]=u[i-1];
+				}
+			}
+
+			break;
+	}
+	
+	return 0;
+}
+
+int CVICALLBACK fsalir (int panel, int control, int event,
+						void *callbackData, int eventData1, int eventData2)
+{
+	switch (event)
+	{
+		case EVENT_COMMIT:
+			QuitUserInterface (0);
+			break;
+	}
+	return 0;
+}
+
+int CVICALLBACK fidentificador (int panel, int control, int event,
+								void *callbackData, int eventData1, int eventData2)
+{
+	
+	switch (event)
+	{
+		case EVENT_COMMIT:
+			
+			GetCtrlVal(panelHandle, PANEL_TOGGLEBUTTON, &boton);
+			
+			if (boton==1)
+			{
+				SetCtrlAttribute(panelHandle, PANEL_TIMER_2, ATTR_ENABLED, 1);
+				SetCtrlAttribute(panelHandle, PANEL_TIMER, ATTR_ENABLED, 1);
+			}
+			
+			else
+			{
+				SetCtrlAttribute(panelHandle, PANEL_TIMER_2, ATTR_ENABLED, 0);
+				SetCtrlAttribute(panelHandle, PANEL_TIMER, ATTR_ENABLED, 0);
+			}
+
+			break;
+	}
+	
+	return 0;
+}
+
+int CVICALLBACK ftimer2 (int panel, int control, int event,
+						 void *callbackData, int eventData1, int eventData2)
+{
+	
+	double graficar[3];
+	
+	switch (event)
+	{
+		case EVENT_TIMER_TICK:
+			
+			//Calcular la salida del modelo
+			f[0]=(b[0]*u[0]) + (b[1]*u[1]) + (b[2]*u[2]) + (b[3]*u[3]) + (b[4]*u[4]) + (b[5]*u[5]) + (b[6]*u[6]) + (b[7]*u[7]) + (b[8]*u[8]) + (b[9]*u[9]) + (b[10]*u[10]) + (b[11]*u[11]) + (b[12]*u[12]) + (b[13]*u[13]) + (b[14]*u[14]);
+						
+			//Calcular el error entre ambos - error de modelado o de identificador
+			error = y[0] - f[0];
+			SetCtrlVal(panelHandle, PANEL_NUMERICMETER_2, error);
+			
+			//Ajustar el modelo en base al error y entrada utilizada
+			b[0] = b[0] + miu * u[0] * error;
+			b[1] = b[1] + miu * u[1] * error;
+			b[2] = b[2] + miu * u[2] * error;
+			b[3] = b[3] + miu * u[3] * error;
+			b[4] = b[4] + miu * u[4] * error;
+			b[5] = b[5] + miu * u[5] * error;
+			b[6] = b[6] + miu * u[6] * error;
+			b[7] = b[7] + miu * u[7] * error;
+			b[8] = b[8] + miu * u[8] * error;
+			b[9] = b[9] + miu * u[9] * error;
+			b[10] = b[10] + miu * u[10] * error;
+			b[11] = b[11] + miu * u[11] * error;
+			b[12] = b[12] + miu * u[12] * error;
+			b[13] = b[13] + miu * u[13] * error;
+			b[14] = b[14] + miu * u[14] * error;
+			
+			SetCtrlVal(panelHandle, PANEL_NUMERIC, b[0]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_2, b[1]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_3, b[2]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_4, b[3]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_8, b[4]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_7, b[5]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_6, b[6]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_5, b[7]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_12, b[8]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_11, b[9]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_10, b[10]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_9, b[11]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_16, b[12]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_15, b[13]);
+			SetCtrlVal(panelHandle, PANEL_NUMERIC_14, b[14]);
+								
+			// Revisar error pequeño
+			if (error<y[0] * 0.005)
+			{
+				contador_error++;
+			}
+			
+			else
+			{
+				contador_error = 0;
+			}
+			
+			if(contador_error>10)
+			{
+				SetCtrlAttribute(panelHandle, PANEL_TIMER_2, ATTR_ENABLED, 0);
+				//SetCtrlAttribute(panelHandle, PANEL_TIMER, ATTR_ENABLED, 0);
+			}
+			
+			//Guardar valores históricos
+			u[14] = u[13];
+			u[13] = u[12];
+			u[12] = u[11];
+			u[11] = u[10];
+			u[10] = u[9];
+			u[9] = u[8];
+			u[8] = u[7];
+			u[7] = u[6];
+			u[6] = u[5];
+			u[5] = u[4];
+			u[4] = u[3];
+			u[3] = u[2];
+			u[2] = u[1];
+			u[1] = u[0];
+			
+			//Generar nueva entrada aleatoria y enviarla a la planta
+			u[0] = Random(0, 230);
+			SetCtrlVal(panelHandle, PANEL_NUMERICMETER, u[0]);
+						
+			//Mostrar en gráfica
+			graficar[0] = f[0];
+			graficar[1] = u[0];
+			graficar[2] = error;
+						
+			PlotStripChart(panelHandle, PANEL_STRIPCHART_2, graficar, 3, 0, 0, VAL_DOUBLE);
+
+			break;
+	}
+	return 0;
+}
+
+int CVICALLBACK ftimer3 (int panel, int control, int event,
+						 void *callbackData, int eventData1, int eventData2)
+{
+	switch (event)
+	{
+		case EVENT_TIMER_TICK:
+			
+			GetCtrlVal(panelHandle,PANEL_NUMERICSLIDE_2,&Referencia);
+			Ref[0]=Referencia;
+			
+			r[0] = y[0];
+		
+			r0 = 120*pow(0.001,2);
+			r1 = -16*(0.001);
+			
+			s0 = pow(0.001,16);
+			s1 = -16*pow(0.001,15);
+			s2 = 120*pow(0.001,14);
+			s3 = -560*pow(0.001,13);
+			s4 = 1820*pow(0.001,12);
+			s5 = -4362*pow(0.001,11);
+			s6 = 8008*pow(0.001,10);
+			s7 = -11440*pow(0.001,9);
+			s8 = 12870*pow(0.001,8);
+			s9 = -11440*pow(0.001,7);
+			s10 = 8008*pow(0.001,6);
+			s11 = -4362*pow(0.001,5);
+			s12 = 1820*pow(0.001,4);
+			s13 = -560*pow(0.001,3);
+			
+			t[0] = (Ref[16]-((r1*b[0]+b[1])*t[1])-((r0*b[0]+r1*b[1]+b[2])*t[2])-((r0*b[1]+r1*b[2]+b[3])*t[3])-((r0*b[2]+r1*b[3]+b[4])*t[4])-((r0*b[3]+r1*b[4]+b[5])*t[5])-((r0*b[4]+r1*b[5]+b[6])*t[6])-((r0*b[5]+r1*b[6]+b[7])*t[7])-((r0*b[6]+r1*b[7]+b[8])*t[8])-((r0*b[7]+r1*b[8]+b[9])*t[9])-((r0*b[8]+r1*b[9]+b[10])*t[10])-((r0*b[9]+r1*b[10]+b[11])*t[11])-((r0*b[10]+r1*b[11]+b[12])*t[12])-((r0*b[11]+r1*b[12]+b[13])*t[13])-((r0*b[12]+r1*b[13]+b[14])*t[14])-((r0*b[13]+r1*b[14]+b[15])*t[15])-((r0*b[14])*t[16]))/b[0];
+			s[0] = ((s0*r[16])+(s1*r[15])+(s2*r[14])+(s3*r[13])+(s4*r[12])+(s5*r[11])+(s6*r[10])+(s7*r[9])+(s8*r[8])+(s9*r[7])+(s10*r[6])+(s11*r[5])+(s12*r[4])+(s13*r[3])-((r1*b[0]+b[1])*s[1])-((r0*b[0]+r1*b[1]+b[2])*s[2])-((r0*b[1]+r1*b[2]+b[3])*s[3])-((r0*b[2]+r1*b[3]+b[4])*s[4])-((r0*b[3]+r1*b[4]+b[5])*s[5])-((r0*b[4]+r1*b[5]+b[6])*s[6])-((r0*b[5]+r1*b[6]+b[7])*s[7])-((r0*b[6]+r1*b[7]+b[8])*s[8])-((r0*b[7]+r1*b[8]+b[9])*s[9])-((r0*b[8]+r1*b[9]+b[10])*s[10])-((r0*b[9]+r1*b[10]+b[11])*s[11])-((r0*b[10]+r1*b[11]+b[12])*s[12])-((r0*b[11]+r1*b[12]+b[13])*s[13])-((r0*b[12]+r1*b[13]+b[14])*s[14])-((r0*b[13]+r1*b[14]+b[15])*s[15])-((r0*b[14])*s[16]))/b[0];
+			m[0] = t[0] - s[0];
+			
+			if(m[0]>230){
+				m[0]=230;	
+			}
+		
+			if(m[0]<0){
+				m[0]=0;	
+			}
+		
+			graf[0] = m[0];
+			graf[1] = y[0];
+			graf[2] = Referencia;
+			
+			//SetCtrlVal(panelHandle, PANEL_NUMERICSLIDE_2,y[0]);
+			PlotStripChart(panelHandle,PANEL_STRIPCHART_3,graf,3,0,0,VAL_DOUBLE);
+		
+			m[2] = m[1];
+			m[1] = m[0];
+			
+			//Históricos
+			Ref[16]=Ref[15];
+			Ref[15]=Ref[14];
+			Ref[14]=Ref[13];
+			Ref[13]=Ref[12];
+			Ref[12]=Ref[11];
+			Ref[11]=Ref[10];
+			Ref[10]=Ref[9];
+			Ref[9]=Ref[8];
+			Ref[8]=Ref[7];
+			Ref[7]=Ref[6];
+			Ref[6]=Ref[5];
+			Ref[5]=Ref[4];
+			Ref[4]=Ref[3];
+			Ref[3]=Ref[2];
+			Ref[2]=Ref[1];
+			Ref[1]=Ref[0];
+			
+			r[16]=r[15];
+			r[15]=r[14];
+			r[14]=r[13];
+			r[13]=r[12];
+			r[12]=r[11];
+			r[11]=r[10];
+			r[10]=r[9];
+			r[9]=r[8];
+			r[8]=r[7];
+			r[7]=r[6];
+			r[6]=r[5];
+			r[5]=r[4];
+			r[4]=r[3];
+			r[3]=r[2];
+			r[2]=r[1];
+			r[1]=r[0];
+			
+			s[13]=s[12];
+			s[12]=s[11];
+			s[11]=s[10];
+			s[10]=s[9];
+			s[9]=s[8];
+			s[8]=s[7];
+			s[7]=s[6];
+			s[6]=s[5];
+			s[5]=s[4];
+			s[4]=s[3];
+			s[3]=s[2];
+			s[2]=s[1];
+			s[1]=s[0];
+			
+			t[16]=t[15];
+			t[15]=t[14];
+			t[14]=t[13];
+			t[13]=t[12];
+			t[12]=t[11];
+			t[11]=t[10];
+			t[10]=t[9];
+			t[9]=t[8];
+			t[8]=t[7];
+			t[7]=t[6];
+			t[6]=t[5];
+			t[5]=t[4];
+			t[4]=t[3];
+			t[3]=t[2];
+			t[2]=t[1];
+			t[1]=t[0];
+		
+			break;
+	}
+	return 0;
+}
+
+int CVICALLBACK fcontrolador (int panel, int control, int event,
+							  void *callbackData, int eventData1, int eventData2)
+{
+	switch (event)
+	{
+		case EVENT_COMMIT:
+			SetCtrlAttribute(panelHandle,PANEL_NUMERICSLIDE,ATTR_DIMMED,1);
+			SetCtrlAttribute(panelHandle,PANEL_TIMER_3,ATTR_ENABLED,1);
+							
+			controlador_avanzado=1;
+			boton=0;
+			
+			u[14]=0;
+			u[13]=0;
+			u[12]=0;
+			u[11]=0;
+			u[10]=0;
+			u[9]=0;
+			u[8]=0;
+			u[7]=0;
+			u[6]=0;
+			u[5]=0;
+			u[4]=0;
+			u[3]=0;
+			u[2]=0;
+			u[1]=0;
+			u[0]=0;
+
+			break;
+	}
+	return 0;
+}
